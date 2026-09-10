@@ -1,0 +1,356 @@
+# UAID-DDI: Reliability and cross-benchmark evaluation of low-supervision drug-drug interaction event prediction for pharmacotherapy safety
+
+Official implementation of the manuscript *"Reliability and cross-benchmark evaluation of low-supervision drug--drug interaction event prediction for pharmacotherapy safety"*.
+
+**Authors**: Wen Li, Yanxiu Fu, Yuebing Wen, Wei Zhang, Peng Wang. **Venue**: submitted to the *Computational and Structural Biotechnology Journal (CSBJ)*, Special Issue on AI-Driven Precision Pharmacotherapy (under review). **Keywords**: drug-drug interaction; few-shot learning; unseen-event prediction; probability quality; transportability.
+
+## Overview
+
+UAID-DDI evaluates two complementary approaches for low-supervision drug-drug interaction (DDI) event prediction. PharDDIE targets few-shot prediction (one or five labeled support examples), and EviDDIE extends prediction to unseen interaction-event categories by transferring event-text semantics (BioSentVec prototypes) when no molecular support pair from the target event is available. Following the paper, ranking performance, probability quality, optimization stability, and cross-benchmark transportability are treated as distinct evaluation properties:
+
+| Property | Evidence in the paper |
+|----------|-----------------------|
+| Ranking performance (few-shot) | Table 2 — PharDDIE vs retrained RareDDIE on the ten rare Dataset-1 events (1-/5-shot) |
+| Ranking + probability quality (zero-shot) | Table 3 — discrimination (AUROC/AUPRC/ACC/F1) and reliability (Brier/NLL/ECE/HCE) of EviDDIE with fixed-representation comparators |
+| Cross-benchmark transportability | Table 4 — archived Dataset-1 checkpoints applied to Dataset 2 vs Dataset-2-specific training |
+| Optimization stability | Table 5 — 2/5 prespecified Dataset-2 runs collapsed |
+| Secondary plausibility audit | Supplementary Table S7 — per-event top-1 candidates with three-tier literature evidence |
+
+**Key results.** On the ten rare Dataset-1 events, PharDDIE had the higher 1-shot AUROC point estimate than retrained RareDDIE (0.9295 vs 0.9179), whereas the ordering reversed under 5-shot supervision (0.9612 vs 0.9717); all seed-paired 95% confidence intervals included zero, so the model ordering depended on support size. On the rare-event partition, EviDDIE reached AUROC 0.7238 without any molecular support from the target event. Direct application of five archived Dataset-1-trained checkpoints to Dataset 2 yielded near-chance ranking (AUROC $0.4945\pm0.0234$), while Dataset-2-specific training yielded AUROC $0.5718\pm0.0125$ among retained non-collapsed runs. EviDDIE derives an evidence-based uncertainty quantity $u_{\text{EDL}} = 2/S$ from the Dirichlet evidence of its two-class evidential head. This quantity is evaluated descriptively together with probability-quality measures and is not assumed to represent calibrated uncertainty without validation.
+
+| Model | Setting | Representation Components |
+|-------|---------|-------------|
+| **PharDDIE** | Few-Shot ($K \in \{1,5\}$) | SHCR (Selected Hidden-Channel Reweighting) + ACI (Adaptive Context Integration) + SRAE (Stochastic Reconstruction-Regularized Autoencoder) |
+| **EviDDIE** | Zero-Shot | TransformerConv encoder + first-order DRKG neighbor encoder + SRAE + BSA (Bio-Semantic Alignment) + EVI (Evidential Inference: standard two-class Dirichlet evidential head) |
+
+### PharDDIE — Few-Shot DDI Prediction
+
+- **SHCR** (Selected Hidden-Channel Reweighting): `pharddie_layers.py` — `HiddenChannelReweightingTransformerConv` fuses a learned data-driven gate $\psi_i$ with a fixed-channel proxy signal $\phi_i$ at a fixed 0.7:0.3 ratio. Five fixed channel indices (0, 1, 2, 46, 53) of the *projected hidden* representation (after `initial_node_feature` linear projection + LayerNorm + ELU) are reweighted by learnable channel coefficients; the indices carry no guaranteed chemical meaning and the module acts as a lightweight regularizing prior, **not** a chemical detector. Node scaling: $\tilde{h}_i = h_i \odot (1 + 1.5\gamma_i)$.
+- **ACI** (Adaptive Context Integration): `pharddie_matcher.py` — bilinear attention over first-order DRKG neighbors with differential query $\delta_{ij} = z_j - z_i$ and residual-style gating $d_i = \text{ELU}(W_{\text{nei}} c_i + W_{\text{self}} z_i)$; drugs without KG neighbors fall back to the structural branch.
+- **SRAE** (Stochastic Reconstruction-Regularized Autoencoder): `pharddie_matcher.py` — asymmetric stochastic bottleneck ($\eta = 10^{-2}$ support, $\eta = 10^{-3}$ query), no KL term and no standard-normal prior; the scale output $\sigma_\phi = \exp(0.5\, l_\phi)$ is a learned noise magnitude, reported as the *latent dispersion score*. Pair scoring: $\text{MLP}(|z_s - z_q|)$.
+
+### EviDDIE — Zero-Shot DDI Prediction
+
+- **DRKG neighbor encoder**: `eviddie_matcher.py` — `EmbedMatcher.neighbor_encoder()` augments each drug representation with first-order DRKG relation/entity neighborhood information through bilinear attention with residual-style gating (the same ACI-style compound-gene context used by PharDDIE); EviDDIE does not use SHCR.
+- **BSA** (Bio-Semantic Alignment): `eviddie_matcher.py` — a GAN aligns drug-pair latent codes with BioSentVec event prototypes (700-dim, precomputed in `event_embedding2.json`). Generator: $700\to256\to512\to64$ (Tanh). Critic: $64\to512\to256\to128\to1$ (Sigmoid).
+- **EVI** (Evidential Inference): `eviddie_matcher.py` — native dual-output Dirichlet evidential head ($\alpha = e + 1$, $u_{\text{EDL}} = 2/S$), EDL loss with annealed KL ($\lambda_t = \min(1, t/10000)$). **Comparator**: $\mathrm{Softplus}(\mathrm{MLP}(|p_t - z_q|))$, the absolute-difference comparator described in the paper (legacy concatenation-based comparators and single-output checkpoints are rejected, never converted).
+- The formal training entry `eviddie_trainer.py` uses per-seed independent checkpoints (`models/{prefix}_seed{seed}bestmodel{, _G}`) for the five training seeds (19940419, 20230801, 20240115, 20240520, 20240910). Inference uses the raw BioSentVec prototypes (no semantic noise) and one fixed evaluation manifest (seed 19940419).
+
+### EviDDIE Fixed-Representation Comparison
+
+`eviddie_train_ablation.py` evaluates prediction variants using the five seed-specific EviDDIE representations while keeping the learned representation unchanged. Four heads are trained for 5,000 iterations per variant under the internal dev protocol:
+
+| Variant | Head / loss |
+|---------|-------------|
+| `softmax` | cross-entropy comparator head |
+| `evi_no_evi` | evidential head, MSE **without** the EVI KL regularizer |
+| `wo_BSA` | evidential head with a trainable linear prototype projection replacing the BSA GAN generator |
+| `evi_full` | the native evidential head trained with the complete EDL loss (MSE + annealed KL) |
+
+The jointly trained EviDDIE model serves as the reference condition under the identical evaluation protocol. Results and figures are generated by `eviddie_ablation_summary.py`, `eviddie_ablation_sigtest.py`, `eviddie_ablation_figure.py`, and `eviddie_ablation_curves_figure.py`.
+
+---
+
+## Repository Structure
+
+```
+UAID-DDI/
+├── environment.yml                 # Conda environment (PyTorch 2.0.1+cu118, PyG 2.6.1, RDKit 2025.03.5)
+├── reproduce.ps1                   # Reproducibility script: manifest verification -> leakage checks -> exports -> tables (no training)
+├── shared/                         # Shared utilities & paper-table generators
+│   ├── preprocess.py               # Molecular featurization (RDKit atom/bond features)
+│   ├── checkpoint.py               # Safe checkpoint loading with audit logging
+│   ├── neg_manifest.py             # Negative-sample manifest generation (SHA256 audited)
+│   ├── verify_manifests.py         # SHA256 + entry-count verification of all manifests
+│   ├── eval_manifest.py            # Fixed evaluation-manifest helpers
+│   ├── audit_leakage.py            # Six-part leakage audit (support-query / pos-neg / ordered / unordered / cross-split / KG-edge)
+│   ├── audit_drug_overlap.py       # Drug-overlap audit across splits
+│   ├── audit_logger.py             # Audit trail utilities
+│   ├── calibration_table.py        # P0-2/P0-5 Table: AUROC/AUPRC/ACC/F1/Brier/NLL/ECE/HCE (+TempScale, no-skill row, reliability diagram with per-bin counts); HCE = classification error among confidence>=0.9
+│   └── paired_diff_rareddie.py     # P1-6: seed-paired PharDDIE-RareDDIE differences with 95% CI
+│
+├── PharDDIE/                       # Few-shot model
+│   ├── pharddie_args.py            # Hyperparameters & CLI
+│   ├── pharddie_dataloader.py      # Episodic data loading
+│   ├── pharddie_layers.py          # SHCR: HiddenChannelReweightingTransformerConv
+│   ├── pharddie_models.py          # MVN_DDI: molecular encoder with SAGPooling
+│   ├── pharddie_matcher.py         # EmbedMatcher: ACI + SRAE + scorer
+│   ├── pharddie_trainer.py         # Training loop; dev checkpoint selection under the fixed-seed dynamic validation protocol
+│   ├── pharddie_train_wo_unc.py    # Ablation: train without uncertainty branch
+│   ├── pharddie_export.py          # w/o-uncertainty variant export (manifest-based)
+│   ├── pharddie_export_full.py     # Main export: fixed manifests, SHA256-verified, SEED-CHAIN-checked
+│   ├── pharddie_table2.py          # Paper Table 2 (main results; 7 transcribed baselines + re-evaluated RareDDIE)
+│   ├── pharddie_table3.py / pharddie_table3_complete.py  # PharDDIE calibration rows (per-seed aggregation)
+│   ├── eval_rareddie_unified.py / aggregate_rareddie.py  # RareDDIE re-evaluation under the unified protocol
+│   ├── dataset1/                   # Benchmark dataset (few-shot split) + neg_manifests/ (SHA256-recorded)
+│   └── results/                    # Table outputs + per-seed RareDDIE results
+│
+├── EviDDIE/                        # Zero-shot model
+│   ├── eviddie_args.py             # Hyperparameters & CLI
+│   ├── eviddie_dataloader.py       # Data loading
+│   ├── eviddie_models.py           # Molecular encoder (standard TransformerConv)
+│   ├── eviddie_matcher.py          # Matcher with BSA (GAN) + EVI (native dual-output EDL, |p_t − z_q| comparator)
+│   ├── eviddie_trainer.py          # Formal training entry (per-seed checkpoints, 5 seeds)
+│   ├── eviddie_train_ablation.py   # Frozen-backbone 4-variant head ablation (softmax / w/o EVI / w/o BSA / full EDL)
+│   ├── eviddie_export_zs_v2.py     # Zero-shot export (fixed manifest, per-seed checkpoints, per-sample CSV with 4 hash columns)
+│   ├── eviddie_ablation_summary.py # Ablation metric aggregation (4 metrics × 3 settings × 4 variants)
+│   ├── eviddie_ablation_sigtest.py # Paired t-tests vs the complete model (per setting × metric)
+│   ├── eviddie_ablation_figure.py  # Main ablation figure (AUROC+F1, significance stars) + 4-metric supplement
+│   ├── eviddie_ablation_curves_figure.py  # Training-dynamics curves + production-checkpoint reference
+│   ├── eviddie_eval_full_dev.py    # Full-model dev evaluation under the internal dev protocol
+│   ├── eviddie_reliability_figure.py  # Horizontal reliability diagram (Fewer | Rare, native + TempScale, per-bin counts)
+│   ├── eviddie_table_discrimination.py # Zero-shot discrimination table (legacy CSV reader; superseded by shared/calibration_table.py)
+│   ├── eviddie_export_variants.py / eviddie_export_zs.py  # Legacy exports (kept for provenance)
+│   ├── neg_manifests/              # Pre-generated negative manifests + SHA256 hashes (all 5 seeds × dev/test/test2)
+│   ├── dataset1/                   # Benchmark dataset (incl. event_embedding2.json BioSentVec prototypes)
+│   └── results/                    # Ablation curves/summary/sigtest, calibration tables, figures
+│       └── predictions/            # Per-sample zero-shot predictions (5 seeds, fixed manifest) + episode manifests
+│
+├── results/                        # Paper-facing table summaries
+│
+├── tests/
+│   └── test_evidential_class_order.py  # Class-order convention test (negative=0, positive=1)
+│
+├── configs/                        # Model configs (eviddie.json, pharddie.json)
+└── audit/                          # Evidence chain
+    ├── checkpoints_sha256.md       # SHA256 manifest of all per-seed checkpoints + BioSentVec embeddings
+    ├── environment/                # Environment lock record
+    ├── figure_audit_checklist.md   # Figure-audit checklist
+    ├── leakage_reports/            # Six leakage-audit reports (all PASS on Dataset 1)
+    └── training_logs/              # Per-seed training logs (PharDDIE 1/5-shot, EviDDIE 0-shot)
+```
+
+> **Large files not included**: DRKG TransE entity embeddings (`DRKG_TransE_entity.npy`, ~200 MB), Morgan fingerprint features, DrugBank-derived training-task files, and trained model checkpoints (16-33 MB each). Their SHA256 values are recorded in `audit/checkpoints_sha256.md`; the binaries can be regenerated with the provided scripts or obtained from the authors (Zenodo deposit on acceptance).
+
+---
+
+## System Requirements
+
+Tested on Ubuntu 16.04, CentOS 7, and Windows 11 with Python 3.9 on one NVIDIA RTX 4090 GPU (24 GB).
+
+---
+
+## Installation
+
+```bash
+# Create conda environment
+conda env create -f environment.yml
+conda activate PharDDIE
+
+# Or install manually
+pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118
+pip install torch-geometric==2.6.1 rdkit-pypi==2025.03.5 numpy==1.24.3 pandas scikit-learn tqdm tensorboardX
+```
+
+---
+
+## Quick Start
+
+### 1. Data Preparation
+
+The benchmark dataset is pre-processed and included in `PharDDIE/dataset1/` (and mirrored under `EviDDIE/dataset1/`). They were derived from DrugBank (version 5.x, license-restricted) and processed following the event-level split protocols from Nyamabo et al. (Briefings in Bioinformatics, 2022) and Lin et al. (Briefings in Bioinformatics, 2021).
+
+Negative-sample manifests are pre-generated in `PharDDIE/dataset1/neg_manifests/` and `EviDDIE/neg_manifests/` with SHA256 hashes. Verify them with:
+
+```bash
+python shared/verify_manifests.py --hash-log PharDDIE/dataset1/neg_manifests/manifest_hashes.json --manifest-dir PharDDIE/dataset1/neg_manifests --dataset PharDDIE/dataset1
+python shared/verify_manifests.py --hash-log EviDDIE/neg_manifests/manifest_hashes.json --manifest-dir EviDDIE/neg_manifests --dataset EviDDIE/dataset1
+python shared/audit_leakage.py --dataset PharDDIE/dataset1   # six-part leakage audit
+```
+
+### 2. Train PharDDIE (Few-Shot)
+
+```bash
+cd PharDDIE
+
+# 5-shot training (dataset1)
+python pharddie_trainer.py \
+    --dataset dataset1 --few 5 --train_few 5 \
+    --batch_size 256 --max_batches 40000 --eval_every 1000 \
+    --prefix pharddie_5shot
+
+# 1-shot training
+python pharddie_trainer.py \
+    --dataset dataset1 --few 1 --train_few 1 \
+    --batch_size 256 --max_batches 40000 --eval_every 1000 \
+    --prefix pharddie_1shot
+```
+
+Per-seed checkpoints are stored under `models/dataset1/models_drugbank_{few}shot_str_seed{seed}/bestmodel`.
+
+### 3. Train EviDDIE (Zero-Shot, Formal Entry)
+
+```bash
+cd EviDDIE
+
+# Formal training: BSA GAN + native dual-output EDL comparator (|p_t − z_q|).
+# Per-seed independent matcher/generator checkpoints are written to
+# models/{prefix}_seed{seed}bestmodel / ...bestmodel_G.
+python eviddie_trainer.py --dataset dataset1 --few 10 --train_few 10 \
+    --batch_size 256 --max_batches 20000 --seed 19940419 --prefix eviddie_new_s1
+
+# Repeat for seeds 20230801 (s2), 20240115 (s3), 20240520 (s4), 20240910 (s5)
+```
+
+### 4. EviDDIE Ablation (Zero-Shot, Frozen Backbone)
+
+```bash
+cd EviDDIE
+
+# Frozen-backbone head ablation (per seed): softmax / evi_no_evi / wo_BSA / evi_full.
+# Each head is trained from scratch for 5,000 iterations; the production checkpoint
+# (jointly trained) is NOT retrained and serves as the horizontal reference.
+python eviddie_train_ablation.py --train_seed 19940419 --prefix eviddie_new_s1 \
+    --max_iter 5000 --variants softmax,evi_no_evi,wo_BSA,evi_full
+# ... repeat for the other four seeds
+
+# Aggregate + significance + figures
+python eviddie_ablation_summary.py   # -> results/ablation_summary_eviddie_new.csv
+python eviddie_ablation_sigtest.py   # -> results/ablation_sigtest.csv
+python eviddie_ablation_figure.py    # -> EviDDIE_Ablation_Study.png (+4-metric supplement)
+python eviddie_ablation_curves_figure.py  # -> EviDDIE_Ablation_Curves.png
+```
+
+### 5. Export Zero-Shot Predictions (Fixed Manifest, 5 Seeds)
+
+```bash
+cd EviDDIE
+python eviddie_export_zs_v2.py \
+    --variants softmax,evi_no_evi,wo_BSA,full_evi \
+    --out_csv predictions_eviddie_new_ablation.csv
+# -> results/predictions/predictions_eviddie_new_ablation.csv
+#    (per-sample rows with checkpoint_sha256 / eval_manifest_sha256 /
+#     event_embedding_sha256 / git_commit; episode manifests saved alongside)
+```
+
+### 6. Reproduce Paper Tables & Figures
+
+```bash
+# Table 2 — Main few-shot results (1/5-shot)
+cd PharDDIE
+python pharddie_table2.py
+
+# Table 3 — Zero-shot discrimination + probability quality (Brier/NLL/ECE/HCE):
+#           production EviDDIE + the four frozen-head rows (Softmax / w/o EVI / w/o BSA
+#           / frozen EDL head) + TempScale + no-skill; PharDDIE rare rows for comparison
+python ../shared/calibration_table.py --csv ../EviDDIE/results/predictions/predictions_eviddie_new_ablation.csv \
+    --methods "EviDDIE" "Softmax baseline" "EviDDIE w/o EVI" "EviDDIE w/o BSA" \
+    --out ../EviDDIE/results/calibration_table_variants.csv --fig ../EviDDIE/reliability_diagram_new.png
+
+# Table 3 — Frozen EDL head rows (exported from the retrained evi_full heads)
+python ../shared/calibration_table.py --csv ../EviDDIE/results/predictions/predictions_evi_full_frozen.csv \
+    --methods "EviDDIE (frozen EDL head)" \
+    --out ../EviDDIE/results/calibration_table_evi_full.csv
+
+# Seed-paired PharDDIE-RareDDIE differences (mean + 95% CI, P1-6)
+python ../shared/paired_diff_rareddie.py
+# -> PharDDIE/results/paired_diff_PharDDIE_RareDDIE.csv
+```
+
+All table scripts abort if the underlying prediction CSVs do not cover the five training seeds, and the export scripts verify checkpoint-hash uniqueness and manifest SHA256 before writing any output.
+
+### 7. RQ3 on Dataset 2 — Cross-Benchmark Evaluation and Qualitative Plausibility Assessment (Tables 4–5, Supplementary Table S7)
+
+RQ3 evaluates EviDDIE on **Dataset 2** (Lin et al.), an independently curated benchmark
+shipped as `EviDDIE/dataset2/` (1,258 drugs, 80 event types = 50 train / 5 dev /
+25 held-out, 320,108 records; DRKG `.npy` files and the sanitized path graph are copied
+from Dataset 1 as described in `external/REPRODUCE_CASE_STUDY.md`), on a fixed balanced
+$1{:}1$ tail-corrupted evaluation manifest:
+
+- **Direct cross-benchmark application** (Table 4): five archived Dataset-1-trained
+  checkpoints applied to the 25 held-out events with no adaptation — near-chance
+  ranking (AUROC $0.4945\pm0.0234$; Brier $0.2633\pm0.0297$).
+- **Dataset-2-specific training** (Tables 4–5): EviDDIE retrained on the 50 training
+  events. Retained non-collapsed runs reached AUROC $0.5718\pm0.0125$ (Brier
+  $0.2505\pm0.0021$); excluding the self-pair-only event gives AUROC $0.5733\pm0.0131$
+  on 24 events. Two of the five prespecified runs collapsed deterministically (seeds
+  20240115/20240910; loss freezes at 1.3333, all-positive predictions) and the first
+  replacement run also collapsed; the final five-run summary uses seeds 19940419,
+  20230801, 20240520, 20260201, 20260301 (disclosed in the paper, Table 5).
+  Source-pair stratification: post-training AUROC $0.6197\pm0.0200$ for
+  source-overlapping pairs vs $0.5085\pm0.0112$ for source-novel pairs.
+- **Secondary plausibility audit** (Supplementary Table S7): per-event top-1
+  candidates under the pre-registered rule $r=p(1-u)$ (five-seed means), after
+  removing pairs present in audited Dataset-1 task files; a leakage audit confirms
+  that **none** of the candidates appears in any Dataset-2 train/dev or Dataset-1
+  task file. Excluding the self-pair-only event leaves 24 interpretable examples:
+  0 pair-specific, 14 class-level, 10 not identified.
+
+```bash
+# 1) Retrain EviDDIE on Dataset 2 (5 seeds, ~3.5 h/seed on one RTX 4090).
+#    Seeds 20240115/20240910 collapse deterministically on Dataset 2
+#    (loss freezes at 1.3333, all-positive predictions) and were replaced
+#    under the identical protocol by 20260201/20260301 (disclosed in the paper).
+python external/train_eviddie_dataset2.py --seed 19940419 --max-batches 20000
+python external/train_eviddie_dataset2.py --seed 20230801 --max-batches 20000
+python external/train_eviddie_dataset2.py --seed 20240520 --max-batches 20000
+python external/train_eviddie_dataset2.py --seed 20260201 --max-batches 20000
+python external/train_eviddie_dataset2.py --seed 20260301 --max-batches 20000
+
+# 2) Export held-out (test2) predictions: 18,720 rows with per-row
+#    checkpoint / manifest / embedding SHA256 + git commit.
+python external/eviddie_export_ds2.py \
+    --seeds 19940419,20230801,20240520,20260201,20260301
+
+# 3) Case candidates: per-event top-1 under r = p(1-u) -> 25 candidates.
+python external/case_study_per_event.py
+
+# 4) Evidence pass (three-tier: Direct / Class-level / Not identified;
+#    every PMID verified against its real title).
+python external/case_evidence_upgrade.py
+
+# 5) Leakage audit (must print VERDICT: PASS, 0/25 hits).
+python external/audit_case_leakage.py
+
+# 6) Paper Table 4 (transportability) and Supplementary Table S7 (plausibility
+#    audit) aggregate external/outputs/predictions_ds2_retrained_0shot.csv and
+#    external/outputs/case_candidates_dataset2_per_event_v2.csv.
+#    Optional: temperature scaling (T=1.364, fitted on dev) via
+#    external/temp_scale_case_table.py — ranking is preserved exactly.
+```
+
+Key numbers: direct application AUROC **0.4945 ± 0.0234** vs Dataset-2-specific
+**0.5718 ± 0.0125** (5 retained runs); in the Supplementary Table S7 audit, 0 of the
+24 interpretable examples had pair-specific literature evidence, 14 had class-level
+support, and 10 had none.
+
+---
+
+## Evidence Chain
+
+- **Per-sample prediction CSVs** (the sole data sources of the paper's Tables 2–3):
+  `PharDDIE/results/predictions/predictions_dataset1_PharDDIE.csv` (PharDDIE, 5 training seeds)
+  and `EviDDIE/results/predictions/predictions_eviddie_new_ablation.csv` (EviDDIE current
+  architecture, 5 training seeds, fixed evaluation manifest, 4 provenance-hash columns).
+  Tables 4–5 (Dataset-2 transportability) and Supplementary Table S7 (plausibility
+  audit) trace to `external/outputs/predictions_ds2_retrained_0shot.csv`
+  (Dataset-2-retrained EviDDIE, 5 seeds) via the chain in Section 7.
+- **Manifests**: SHA256-verified negative manifests in `PharDDIE/dataset1/neg_manifests/`
+  and `EviDDIE/neg_manifests/` (all five seeds × dev/test/test2).
+- **Checkpoint hashes**: `audit/checkpoints_sha256.md` records the SHA256 values of the
+  per-seed checkpoints behind the shipped CSVs (binaries not distributed).
+- **Training logs**: `audit/training_logs/` (Dataset 1) and
+  `external/outputs/train_logs_ds2/` (Dataset 2, incl. the collapsed-seed records).
+- **Leakage audits**: six reports in `audit/leakage_reports/` (all hard checks PASS on
+  Dataset 1, KG-edge overlap 0); case-candidate audit `external/audit_case_leakage.py`
+  (PASS, 0/25 against Dataset-2 train/dev and all Dataset-1 task files).
+- **Pipeline**: `reproduce.ps1` runs manifest verification → leakage audit →
+  manifest-based exports → table generation → case-study closed loop, and aborts on any
+  failure (it does not train models).
+
+Paper results provenance (table ↔ script ↔ CSV) is documented in [`RESULTS_MAP.md`](RESULTS_MAP.md).
+
+---
+
+## Citation
+
+```bibtex
+@article{li2026reliability,
+  title     = {Reliability and Transportability of Low-Supervision DDI Prediction for Pharmacotherapy Safety},
+  author    = {Li, Wen and Fu, Yanxiu and Wen, Yuebing and Zhang, Wei and Wang, Peng},
+  journal   = {Computational and Structural Biotechnology Journal (Special Issue on AI-Driven Precision Pharmacotherapy)},
+  note      = {Under review},
+  year      = {2026},
+  url       = {https://github.com/Fxmm973/UAID-DDI}
+}
+```
