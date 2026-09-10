@@ -1,8 +1,7 @@
 # RESULTS_MAP.md — Paper Results Provenance Mapping
 
 ## Version Info
-- Paper: *"Reliability and cross-benchmark evaluation of low-supervision drug--drug interaction
-  event prediction for pharmacotherapy safety"* (Wen Li, Yanxiu Fu, Yuebing Wen, Wei Zhang, Peng Wang) —
+- Paper: *"Reliability assessment of low-supervision drug--drug interaction event prediction across benchmarks"* (Wen Li, Yanxiu Fu, Yuebing Wen, Wei Zhang, Peng Wang) —
   submitted to the CSBJ Special Issue on AI-Driven Precision Pharmacotherapy (under review).
 - Code: GitHub [`Fxmm973/UAID-DDI`](https://github.com/Fxmm973/UAID-DDI) — all values below
   are reproduced by the scripts listed here, from the per-sample prediction CSVs shipped
