@@ -1,6 +1,6 @@
-# UAID-DDI: Reliability and cross-benchmark evaluation of low-supervision drug-drug interaction event prediction for pharmacotherapy safety
+# UAID-DDI:Reliability assessment of low-supervision drug--drug interaction event prediction across benchmarks
 
-Official implementation of the manuscript *"Reliability and cross-benchmark evaluation of low-supervision drug--drug interaction event prediction for pharmacotherapy safety"*.
+Official implementation of the manuscript *"Reliability assessment of low-supervision drug--drug interaction event prediction across benchmarks"*.
 
 **Authors**: Wen Li, Yanxiu Fu, Yuebing Wen, Wei Zhang, Peng Wang. **Venue**: submitted to the *Computational and Structural Biotechnology Journal (CSBJ)*, Special Issue on AI-Driven Precision Pharmacotherapy (under review). **Keywords**: drug-drug interaction; few-shot learning; unseen-event prediction; probability quality; transportability.
 
