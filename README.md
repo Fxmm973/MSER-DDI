@@ -1,4 +1,4 @@
-# UAID-DDI: Reliability and Transportability of Low-Supervision DDI Prediction for Pharmacotherapy Safety
+# UAID-DDI: Reliability assessment of low-supervision drug-drug interaction event prediction across benchmarks
 
 Official implementation of the paper *"Reliability and Transportability of Low-Supervision DDI Prediction for Pharmacotherapy Safety"*.
 
