@@ -1,15 +1,27 @@
-# UAID-DDI:Few-shot and unseen-event prediction of drug-drug interaction events with probability-quality evaluation
+# UAID-DDI: Reliability and Transportability of Low-Supervision DDI Prediction for Pharmacotherapy Safety
 
-Official implementation of the paper *"Few-shot and unseen-event prediction of drug-drug interaction events with probability-quality evaluation"*.
+Official implementation of the paper *"Reliability and Transportability of Low-Supervision DDI Prediction for Pharmacotherapy Safety"*.
+
+**Authors**: Wen Li, Yanxiu Fu, Yuebing Wen, Wei Zhang, Peng Wang. **Venue**: submitted to the *Computational and Structural Biotechnology Journal (CSBJ)*, Special Issue on AI-Driven Precision Pharmacotherapy (under review). **Keywords**: drug-drug interaction; few-shot learning; unseen-event prediction; probability quality; transportability.
 
 ## Overview
 
-UAID-DDI is a two-model framework for predicting rare drug-drug interaction (DDI) events under extreme data scarcity. PharDDIE targets few-shot prediction (one or five labeled support examples), and EviDDIE extends prediction to unseen interaction-event categories by transferring event-text semantics. Both models are evaluated from two complementary perspectives: predictive discrimination (AUROC/AUPRC/ACC/F1) and probability reliability (ECE/Brier/NLL/HCE), with post-hoc temperature scaling. EviDDIE additionally outputs a model-assigned evidential uncertainty score $u_{\text{EDL}} = 2/S$ from the Dirichlet evidence of its two-class evidential head.
+UAID-DDI is a two-model framework for low-supervision drug-drug interaction (DDI) event prediction. PharDDIE targets few-shot prediction (one or five labeled support examples), and EviDDIE extends prediction to unseen interaction-event categories by transferring event-text semantics (BioSentVec prototypes) when no molecular support pair from the target event is available. Following the paper, ranking performance, probability quality, optimization stability, and cross-benchmark transportability are treated as distinct evaluation properties:
+
+| Property | Evidence in the paper |
+|----------|-----------------------|
+| Ranking performance (few-shot) | Table 2 — PharDDIE vs retrained RareDDIE on the ten rare Dataset-1 events (1-/5-shot) |
+| Ranking + probability quality (zero-shot) | Table 3 — discrimination (AUROC/AUPRC/ACC/F1) and reliability (Brier/NLL/ECE/HCE) of EviDDIE with fixed-representation comparators |
+| Cross-benchmark transportability | Table 4 — archived Dataset-1 checkpoints applied to Dataset 2 vs Dataset-2-specific training |
+| Optimization stability | Table 5 — 2/5 prespecified Dataset-2 runs collapsed |
+| Secondary plausibility audit | Supplementary Table S7 — per-event top-1 candidates with three-tier literature evidence |
+
+**Key results.** On the ten rare Dataset-1 events, PharDDIE had the higher 1-shot AUROC point estimate than retrained RareDDIE (0.9295 vs 0.9179), whereas the ordering reversed under 5-shot supervision (0.9612 vs 0.9717); all seed-paired 95% confidence intervals included zero, so the model ordering depended on support size. On the rare-event partition, EviDDIE reached AUROC 0.7238 without any molecular support from the target event. Direct application of five archived Dataset-1-trained checkpoints to Dataset 2 was near chance (AUROC $0.4945\pm0.0234$), while retained non-collapsed Dataset-2-specific runs reached AUROC $0.5718\pm0.0125$. EviDDIE additionally outputs a model-assigned evidential uncertainty score $u_{\text{EDL}} = 2/S$ from the Dirichlet evidence of its two-class evidential head, reported descriptively rather than as a calibrated uncertainty measure.
 
 | Model | Setting | Key Modules |
 |-------|---------|-------------|
 | **PharDDIE** | Few-Shot ($K \in \{1,5\}$) | SHCR (Selected Hidden-Channel Reweighting) + ACI (Adaptive Context Integration) + SRAE (Stochastic Reconstruction-Regularized Autoencoder) |
-| **EviDDIE** | Zero-Shot | BSA (Bio-Semantic Alignment) + EVI (Evidential Inference: standard two-class EDL, native dual-output evidential head) |
+| **EviDDIE** | Zero-Shot | TransformerConv encoder + first-order DRKG neighbor encoder + SRAE + BSA (Bio-Semantic Alignment) + EVI (Evidential Inference: standard two-class EDL, native dual-output evidential head) |
 
 ### PharDDIE — Few-Shot DDI Prediction
 
@@ -19,6 +31,7 @@ UAID-DDI is a two-model framework for predicting rare drug-drug interaction (DDI
 
 ### EviDDIE — Zero-Shot DDI Prediction
 
+- **DRKG neighbor encoder**: `eviddie_matcher.py` — `EmbedMatcher.neighbor_encoder()` augments each drug representation with first-order DRKG relation/entity neighborhood information through bilinear attention with residual-style gating (the same ACI-style compound-gene context used by PharDDIE); EviDDIE does not use SHCR.
 - **BSA** (Bio-Semantic Alignment): `eviddie_matcher.py` — a GAN aligns drug-pair latent codes with BioSentVec event prototypes (700-dim, precomputed in `event_embedding2.json`). Generator: $700\to256\to512\to64$ (Tanh). Critic: $64\to512\to256\to128\to1$ (Sigmoid).
 - **EVI** (Evidential Inference): `eviddie_matcher.py` — native dual-output Dirichlet evidential head ($\alpha = e + 1$, $u_{\text{EDL}} = 2/S$), EDL loss with annealed KL ($\lambda_t = \min(1, t/10000)$). **Comparator**: $\mathrm{Softplus}(\mathrm{MLP}(|p_t - z_q|))$, the absolute-difference comparator described in the paper (legacy concatenation-based comparators and single-output checkpoints are rejected, never converted).
 - The formal training entry `eviddie_trainer.py` uses per-seed independent checkpoints (`models/{prefix}_seed{seed}bestmodel{, _G}`) for the five training seeds (19940419, 20230801, 20240115, 20240520, 20240910). Inference uses the raw BioSentVec prototypes (no semantic noise) and one fixed evaluation manifest (seed 19940419).
@@ -217,9 +230,9 @@ python eviddie_export_zs_v2.py \
 cd PharDDIE
 python pharddie_table2.py
 
-# Table 3 — Zero-shot discrimination + calibration: production EviDDIE + the four
-#           frozen-head rows (Softmax / w/o EVI / w/o BSA / frozen EDL head) + TempScale
-#           + no-skill; PharDDIE rare rows for comparison
+# Table 3 — Zero-shot discrimination + probability quality (Brier/NLL/ECE/HCE):
+#           production EviDDIE + the four frozen-head rows (Softmax / w/o EVI / w/o BSA
+#           / frozen EDL head) + TempScale + no-skill; PharDDIE rare rows for comparison
 python ../shared/calibration_table.py --csv ../EviDDIE/results/predictions/predictions_eviddie_new_ablation.csv \
     --methods "EviDDIE" "Softmax baseline" "EviDDIE w/o EVI" "EviDDIE w/o BSA" \
     --out ../EviDDIE/results/calibration_table_variants.csv --fig ../EviDDIE/reliability_diagram_new.png
@@ -236,16 +249,32 @@ python ../shared/paired_diff_rareddie.py
 
 All table scripts abort if the underlying prediction CSVs do not cover the five training seeds, and the export scripts verify checkpoint-hash uniqueness and manifest SHA256 before writing any output.
 
-### 7. Case Study on Dataset 2 (Table 4) — External Validation, Closed Loop
+### 7. RQ3 on Dataset 2 — Cross-Benchmark Transportability & Secondary Plausibility Audit (Tables 4–5, Supplementary Table S7)
 
-The case study (paper Table 4) evaluates EviDDIE retrained on **Dataset 2** (Lin et al.),
-an independently curated benchmark shipped as `EviDDIE/dataset2/` (1,258 drugs, 80 event
-types = 50 train / 5 dev / 25 held-out, 320,108 records; DRKG `.npy` files and the
-sanitized path graph are copied from Dataset 1 as described in
-`external/REPRODUCE_CASE_STUDY.md`). The Table-4 top-10 are the highest-ranked
-per-event candidates on the 25 held-out events, selected under the pre-registered rule
-$r=p(1-u)$ (five-seed means); a leakage audit confirms that **none** of the candidates
-appears in any Dataset-2 train/dev or Dataset-1 task file.
+RQ3 evaluates EviDDIE on **Dataset 2** (Lin et al.), an independently curated benchmark
+shipped as `EviDDIE/dataset2/` (1,258 drugs, 80 event types = 50 train / 5 dev /
+25 held-out, 320,108 records; DRKG `.npy` files and the sanitized path graph are copied
+from Dataset 1 as described in `external/REPRODUCE_CASE_STUDY.md`), on a fixed balanced
+$1{:}1$ tail-corrupted evaluation manifest:
+
+- **Direct cross-benchmark application** (Table 4): five archived Dataset-1-trained
+  checkpoints applied to the 25 held-out events with no adaptation — near-chance
+  ranking (AUROC $0.4945\pm0.0234$; Brier $0.2633\pm0.0297$).
+- **Dataset-2-specific training** (Tables 4–5): EviDDIE retrained on the 50 training
+  events. Retained non-collapsed runs reached AUROC $0.5718\pm0.0125$ (Brier
+  $0.2505\pm0.0021$); excluding the self-pair-only event gives AUROC $0.5733\pm0.0131$
+  on 24 events. Two of the five prespecified runs collapsed deterministically (seeds
+  20240115/20240910; loss freezes at 1.3333, all-positive predictions) and the first
+  replacement run also collapsed; the final five-run summary uses seeds 19940419,
+  20230801, 20240520, 20260201, 20260301 (disclosed in the paper, Table 5).
+  Source-pair stratification: post-training AUROC $0.6197\pm0.0200$ for
+  source-overlapping pairs vs $0.5085\pm0.0112$ for source-novel pairs.
+- **Secondary plausibility audit** (Supplementary Table S7): per-event top-1
+  candidates under the pre-registered rule $r=p(1-u)$ (five-seed means), after
+  removing pairs present in audited Dataset-1 task files; a leakage audit confirms
+  that **none** of the candidates appears in any Dataset-2 train/dev or Dataset-1
+  task file. Excluding the self-pair-only event leaves 24 interpretable examples:
+  0 pair-specific, 14 class-level, 10 not identified.
 
 ```bash
 # 1) Retrain EviDDIE on Dataset 2 (5 seeds, ~3.5 h/seed on one RTX 4090).
@@ -273,25 +302,28 @@ python external/case_evidence_upgrade.py
 # 5) Leakage audit (must print VERDICT: PASS, 0/25 hits).
 python external/audit_case_leakage.py
 
-# 6) Paper Table 4 = the ten highest-ranked rows (by r) of
+# 6) Paper Table 4 (transportability) and Supplementary Table S7 (plausibility
+#    audit) aggregate external/outputs/predictions_ds2_retrained_0shot.csv and
 #    external/outputs/case_candidates_dataset2_per_event_v2.csv.
 #    Optional: temperature scaling (T=1.364, fitted on dev) via
 #    external/temp_scale_case_table.py — ranking is preserved exactly.
 ```
 
-Key numbers: held-out test2 AUROC **0.5718 ± 0.0125** (5 seeds); among the Table-4
-top-10, seven candidates have class-level mechanistic literature support (PMIDs in the
-table) and three are "Not identified" (routed to expert review in the paper).
+Key numbers: direct application AUROC **0.4945 ± 0.0234** vs Dataset-2-specific
+**0.5718 ± 0.0125** (5 retained runs); in the Supplementary Table S7 audit, 0 of the
+24 interpretable examples had pair-specific literature evidence, 14 had class-level
+support, and 10 had none.
 
 ---
 
 ## Evidence Chain
 
-- **Per-sample prediction CSVs** (the sole data sources of the paper's Tables 2–4):
+- **Per-sample prediction CSVs** (the sole data sources of the paper's Tables 2–3):
   `PharDDIE/results/predictions/predictions_dataset1_PharDDIE.csv` (PharDDIE, 5 training seeds)
   and `EviDDIE/results/predictions/predictions_eviddie_new_ablation.csv` (EviDDIE current
   architecture, 5 training seeds, fixed evaluation manifest, 4 provenance-hash columns).
-  Table 4 (case study) traces to `external/outputs/predictions_ds2_retrained_0shot.csv`
+  Tables 4–5 (Dataset-2 transportability) and Supplementary Table S7 (plausibility
+  audit) trace to `external/outputs/predictions_ds2_retrained_0shot.csv`
   (Dataset-2-retrained EviDDIE, 5 seeds) via the chain in Section 7.
 - **Manifests**: SHA256-verified negative manifests in `PharDDIE/dataset1/neg_manifests/`
   and `EviDDIE/neg_manifests/` (all five seeds × dev/test/test2).
@@ -307,3 +339,18 @@ table) and three are "Not identified" (routed to expert review in the paper).
   failure (it does not train models).
 
 Paper results provenance (table ↔ script ↔ CSV) is documented in [`RESULTS_MAP.md`](RESULTS_MAP.md).
+
+---
+
+## Citation
+
+```bibtex
+@article{li2026reliability,
+  title     = {Reliability and Transportability of Low-Supervision DDI Prediction for Pharmacotherapy Safety},
+  author    = {Li, Wen and Fu, Yanxiu and Wen, Yuebing and Zhang, Wei and Wang, Peng},
+  journal   = {Computational and Structural Biotechnology Journal (Special Issue on AI-Driven Precision Pharmacotherapy)},
+  note      = {Under review},
+  year      = {2026},
+  url       = {https://github.com/Fxmm973/UAID-DDI}
+}
+```
