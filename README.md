@@ -1,4 +1,4 @@
-# UAID-DDI:Reliability assessment of low-supervision drug--drug interaction event prediction across benchmarks
+# UAID-DDI:Reliability assessment of low-supervision drug-drug interaction event prediction across benchmarks
 
 Official implementation of the manuscript *"Reliability assessment of low-supervision drug--drug interaction event prediction across benchmarks"*.
 
