@@ -342,15 +342,4 @@ Paper results provenance (table ↔ script ↔ CSV) is documented in [`RESULTS_M
 
 ---
 
-## Citation
 
-```bibtex
-@article{li2026reliability,
-  title     = {Reliability and Transportability of Low-Supervision DDI Prediction for Pharmacotherapy Safety},
-  author    = {Li, Wen and Fu, Yanxiu and Wen, Yuebing and Zhang, Wei and Wang, Peng},
-  journal   = {Computational and Structural Biotechnology Journal (Special Issue on AI-Driven Precision Pharmacotherapy)},
-  note      = {Under review},
-  year      = {2026},
-  url       = {https://github.com/Fxmm973/UAID-DDI}
-}
-```
