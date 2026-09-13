@@ -1,12 +1,12 @@
-# UAID-DDI:Reliability assessment of low-supervision drug-drug interaction event prediction across benchmarks
+# DPMR-DDI: Dual-Pathway Molecular Representation Learning for Few-Shot and Unseen-Event Drug-Drug Interaction Prediction
 
-Official implementation of the manuscript *"Reliability assessment of low-supervision drug--drug interaction event prediction across benchmarks"*.
+Official implementation of the manuscript *"DPMR-DDI: Dual-Pathway Molecular Representation Learning for Few-Shot and Unseen-Event Drug-Drug Interaction Prediction"*.
 
 **Authors**: Wen Li, Yanxiu Fu, Yuebing Wen, Wei Zhang, Peng Wang. **Venue**: submitted to the *Computational and Structural Biotechnology Journal (CSBJ)*, Special Issue on AI-Driven Precision Pharmacotherapy (under review). **Keywords**: drug-drug interaction; few-shot learning; unseen-event prediction; probability quality; transportability.
 
 ## Overview
 
-UAID-DDI evaluates two complementary approaches for low-supervision drug-drug interaction (DDI) event prediction. PharDDIE targets few-shot prediction (one or five labeled support examples), and EviDDIE extends prediction to unseen interaction-event categories by transferring event-text semantics (BioSentVec prototypes) when no molecular support pair from the target event is available. Following the paper, ranking performance, probability quality, optimization stability, and cross-benchmark transportability are treated as distinct evaluation properties:
+DPMR-DDI evaluates two complementary approaches for low-supervision drug-drug interaction (DDI) event prediction. PharDDIE targets few-shot prediction (one or five labeled support examples), and EviDDIE extends prediction to unseen interaction-event categories by transferring event-text semantics (BioSentVec prototypes) when no molecular support pair from the target event is available. Following the paper, ranking performance, probability quality, optimization stability, and cross-benchmark transportability are treated as distinct evaluation properties:
 
 | Property | Evidence in the paper |
 |----------|-----------------------|
