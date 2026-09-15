@@ -128,25 +128,3 @@ python ../shared/calibration_table.py \
 
 See [RESULTS_MAP.md](RESULTS_MAP.md) for exact sources, statistical units, and interpretation boundaries.
 
-## Statistical conventions
-
-- AUROC and AUPRC are pooled over held-out examples; event-macro F1 averages event-specific F1 scores.
-- Brier score, NLL, and ECE are computed per seed and summarized across five runs.
-- ECE uses 10 equal-width probability bins.
-- HCE is classification error among predictions with `max(p,1−p)≥0.9` and is reported with coverage.
-- Matched tests use seed-level differences, two-sided paired t-tests, and 95% confidence intervals (`n=5`, `df=4`). P values are nominal and unadjusted for multiplicity.
-- Published baselines in Table 2 were not retrained and provide descriptive context.
-
-## Scope and limitations
-
-- PharDDIE and EviDDIE are independently trained pathways, not a jointly trained multimodal fusion model.
-- The primary claims concern unseen DDI event categories, not novel-compound generalization; drug identities may recur across event partitions.
-- BSA aligns marginal distributions and does not enforce event-wise molecular-text correspondence.
-- Complete-model and fixed-representation EviDDIE results use different training procedures and are interpreted separately.
-- PharDDIE component removal and SHCR-weight sensitivity are descriptive development-stage analyses.
-- Dataset 2 findings provide drug- or class-level plausibility rather than pair-specific or clinical validation.
-- Large licensed data artifacts, DRKG entity embeddings, and trained checkpoints are not committed; available provenance is recorded under `audit/`.
-
-## Provenance
-
-Prediction exports are stored under `PharDDIE/results/predictions/` and `EviDDIE/results/predictions/`. Negative manifests, hashes, environment records, and training logs are retained under the dataset and `audit/` directories. `reproduce.ps1` verifies the evidence chain and regenerates supported summaries; it does not retrain models.
