@@ -137,15 +137,6 @@ Complete EviDDIE has higher mean pooled F1 in all groups; only the rare-event re
 - **Dataset 2:** direct transfer, Dataset 2-specific training, collapse reporting, overlap sensitivity, and self-pair exclusion are supplementary analyses documented by `external/REPRODUCE_CASE_STUDY.md`.
 - **Table S7:** `external/case_study_per_event.py` ranks one positive benchmark example per held-out event by `mean(p) × [1−mean(u_EDL)]` after overlap exclusions. `external/case_evidence_upgrade.py` records literature evidence and `external/audit_case_leakage.py` verifies task-data exclusions. The manuscript reports 14/24 examples with directionally consistent drug- or class-level evidence, 10 with none identified, and zero satisfying the pair-specific criterion.
 
-## Evidence chain
-
-1. Fixed manifests and hashes are stored with Dataset 1 task data.
-2. `shared/verify_manifests.py` checks hashes and entry counts.
-3. `shared/audit_leakage.py` regenerates reports in `audit/leakage_reports/`.
-4. Per-sample predictions are under `PharDDIE/results/predictions/` and `EviDDIE/results/predictions/`.
-5. Checkpoint and event-embedding hashes are under `audit/`.
-6. Training logs are under `audit/training_logs/`.
-7. `reproduce.ps1` verifies the chain and regenerates supported summaries; it does not retrain models.
 
 ## Interpretation boundaries
 
