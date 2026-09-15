@@ -1,11 +1,7 @@
 # RESULTS_MAP.md — Paper Results Provenance Mapping
 
 ## Version Info
-- Paper: *"DPMR-DDI: Dual-Pathway Molecular Representation Learning for Few-Shot and Unseen-Event Drug-Drug Interaction Prediction"* (Wen Li, Yanxiu Fu, Yuebing Wen, Wei Zhang, Peng Wang) —
-- Code: GitHub [`Fxmm973/UAID-DDI`](https://github.com/Fxmm973/UAID-DDI) — all values below
-  are reproduced by the scripts listed here, from the per-sample prediction CSVs shipped
-  in this repository.
-
+- Paper: *"MSER-DDI: Molecular and Semantic Event Representations for Few-Shot and Unseen-Event Drug–Drug Interaction Prediction"* ( Wen Li, Yanxiu Fu, Xiangqiong Wu, Wei Zhang, and Peng Wang.) —
 ---
 
 ## Paper-to-Code Quick Reference
